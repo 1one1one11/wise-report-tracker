@@ -1,0 +1,33 @@
+name: Wise Report Bot
+
+on:
+  schedule:
+    # GitHub Actions cron is UTC. 23:00 UTC on Sun-Thu = 08:00 KST on Mon-Fri.
+    - cron: "0 23 * * 0-4"
+  workflow_dispatch:
+
+jobs:
+  send-wise-report:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: wise-report-bot
+      cancel-in-progress: false
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Send WiseReport summary
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python wise_report_bot.py --skip-non-business-day
