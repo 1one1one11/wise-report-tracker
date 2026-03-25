@@ -113,6 +113,14 @@ def clean_text(value: str | None) -> str:
     return text
 
 
+def split_institution_author(value: str) -> tuple[str, str]:
+    text = clean_text(value)
+    match = re.match(r"^(.*?)\s*\[(.+?)\]\s*$", text)
+    if not match:
+        return text, ""
+    return clean_text(match.group(1)), clean_text(match.group(2))
+
+
 def normalize_regular_record(record: dict[str, str]) -> dict[str, str]:
     institution = record["기관명"]
     author = record["작성자"]
@@ -238,7 +246,11 @@ def visible_width(value: str) -> int:
 
 
 def pad_cell(value: str, width: int) -> str:
-    value = value[:width]
+    if visible_width(value) > width:
+        if width <= 1:
+            value = "…"
+        else:
+            value = value[: width - 1].rstrip() + "…"
     return value + (" " * max(0, width - visible_width(value)))
 
 
@@ -268,15 +280,17 @@ def chunked(items: list, size: int) -> list[list]:
 
 
 def build_company_table(items: list[dict[str, str]]) -> str:
-    headers = [("기업명", 16), ("변화", 8), ("목표가", 10), ("증권사", 18)]
+    headers = [("기업명", 16), ("변화", 8), ("목표가", 10), ("증권사", 14), ("작성자", 12)]
     rows = []
     for item in items:
+        institution, author = split_institution_author(item["기관명/작성자"])
         rows.append(
             [
                 re.sub(r"\s*\(\d+\)$", "", item["기업명"]),
                 decorate_change_label(item.get("목표주가변화") or "-"),
                 item.get("목표주가") or "-",
-                item["기관명/작성자"].split("[", 1)[0].strip(),
+                institution,
+                author or "-",
             ]
         )
     return build_pre_table(headers, rows)
@@ -335,17 +349,13 @@ def build_industry_messages(items: list[dict[str, str]]) -> list[str]:
     if not items:
         return ["<b>[산업]</b>\n발간 리포트가 없거나 파싱에 실패했습니다."]
 
-    headers = [("산업명", 18), ("증권사", 14), ("제목", 30)]
+    headers = [("산업명", 16), ("증권사", 12), ("작성자", 10), ("제목", 24)]
     messages: list[str] = []
     for index, batch in enumerate(chunked(items, 24), start=1):
-        rows = [
-            [
-                item["산업명"],
-                item["기관명/작성자"].split("[", 1)[0].strip(),
-                truncate(item["제목"], 30),
-            ]
-            for item in batch
-        ]
+        rows = []
+        for item in batch:
+            institution, author = split_institution_author(item["기관명/작성자"])
+            rows.append([item["산업명"], institution, author or "-", truncate(item["제목"], 24)])
         title = "<b>[산업]</b>" if index == 1 else f"<b>[산업 이어서 {index}]</b>"
         messages.append(f"{title}\n\n{build_pre_table(headers, rows)}")
     return messages
@@ -355,10 +365,18 @@ def build_regular_messages(items: list[dict[str, str]]) -> list[str]:
     if not items:
         return ["<b>[정기]</b>\n발간 리포트가 없거나 파싱에 실패했습니다."]
 
-    headers = [("기관", 12), ("분류", 12), ("제목", 36)]
+    headers = [("기관", 10), ("작성자", 10), ("분류", 10), ("제목", 28)]
     messages: list[str] = []
     for index, batch in enumerate(chunked(items, 32), start=1):
-        rows = [[item["기관명"], item["분류"], truncate(item["제목"], 36)] for item in batch]
+        rows = [
+            [
+                item["기관명"],
+                item["작성자"] or "-",
+                item["분류"],
+                truncate(item["제목"], 28),
+            ]
+            for item in batch
+        ]
         title = "<b>[정기]</b>" if index == 1 else f"<b>[정기 이어서 {index}]</b>"
         messages.append(f"{title}\n\n{build_pre_table(headers, rows)}")
     return messages

@@ -2,8 +2,8 @@ name: Wise Report Bot
 
 on:
   schedule:
-    # GitHub Actions cron is UTC. 23:00 UTC on Sun-Thu = 08:00 KST on Mon-Fri.
-    - cron: "0 23 * * 0-4"
+    # GitHub Actions cron is UTC. 22:56 UTC on Sun-Thu = 07:56 KST on Mon-Fri.
+    - cron: "56 22 * * 0-4"
   workflow_dispatch:
 
 jobs:
@@ -31,3 +31,32 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python wise_report_bot.py --skip-non-business-day
+
+      - name: Notify Telegram on failure
+        if: ${{ failure() }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPOSITORY: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          WORKFLOW: ${{ github.workflow }}
+          TRIGGER: ${{ github.event_name }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          message=$(cat <<EOF
+          [Wise Report Bot 실패]
+          저장소: $REPOSITORY
+          브랜치: $BRANCH
+          워크플로우: $WORKFLOW
+          트리거: $TRIGGER
+          상태: $JOB_STATUS
+          실행 링크: $RUN_URL
+          EOF
+          )
+
+          curl -fsS --retry 3 \
+            -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${message}" \
+            --data-urlencode "disable_web_page_preview=true"
